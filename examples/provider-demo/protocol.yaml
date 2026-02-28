@@ -1,0 +1,246 @@
+a2e_protocol:
+  version: "1.0.0"
+  
+  service:
+    id: "demo_tea_shop"
+    name: "示例奶茶店"
+    type: "food_delivery"
+    provider:
+      id: "provider_demo"
+      name: "示例奶茶店"
+      certification: "personal"
+  
+  semantic:
+    description: |
+      这是一家示例奶茶店，用于演示如何接入A2E平台。
+      提供各类奶茶、果茶饮品，支持自定义糖度和温度。
+      配送范围为店铺周边3公里内。
+    keywords:
+      - 奶茶
+      - 果茶
+      - 饮品
+      - 外卖
+    capabilities:
+      - 在线浏览菜单
+      - 自定义糖度（全糖/七分糖/半糖/三分糖/无糖）
+      - 自定义温度（正常冰/少冰/去冰/热）
+      - 外卖配送
+    constraints:
+      - 配送范围：3公里内
+      - 营业时间：9:00-21:00
+      - 起送金额：10元
+    examples:
+      - query: "我想喝奶茶"
+        action: "get_menu"
+        response: "为您展示菜单"
+      - query: "来一杯招牌奶茶，半糖少冰"
+        action: "create_order"
+        params:
+          item: "招牌奶茶"
+          sugar: "半糖"
+          ice: "少冰"
+  
+  authentication:
+    required: true
+    methods:
+      - type: "platform_token"
+        description: "通过A2E平台统一认证获取用户Token"
+        endpoint: "/api/v1/open/platform/get_user_token"
+  
+  permissions:
+    required:
+      - name: "user_phone"
+        description: "需要您的手机号，以便配送员联系您"
+        endpoint: "/api/v1/open/platform/get_user_phone"
+      - name: "user_address"
+        description: "需要您的地址，用于外卖配送"
+        endpoint: "/api/v1/open/platform/get_user_address"
+    optional:
+      - name: "user_profile"
+        description: "获取您的昵称用于会员积分"
+        endpoint: "/api/v1/open/platform/get_user_profile"
+  
+  data_format:
+    input:
+      type: "json"
+      encoding: "utf-8"
+    output:
+      type: "json"
+      encoding: "utf-8"
+      human_readable: true
+  
+  endpoints:
+    - name: "get_menu"
+      path: "/api/menu"
+      method: "GET"
+      description: "获取店铺完整菜单，包含所有可售商品"
+      requires_payment: false
+      input_schema:
+        type: object
+        properties:
+          category:
+            type: string
+            description: "按分类筛选（可选）"
+      output_schema:
+        type: object
+        properties:
+          categories:
+            type: array
+            items:
+              type: object
+              properties:
+                name:
+                  type: string
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      price:
+                        type: number
+                      description:
+                        type: string
+                      options:
+                        type: object
+      output_description: |
+        返回分类整理的菜单，每个商品包含：
+        - id: 商品ID，下单时使用
+        - name: 商品名称
+        - price: 价格（元）
+        - description: 商品描述
+        - options: 可选配置
+      examples:
+        - request: {}
+          response:
+            categories:
+              - name: "招牌奶茶"
+                items:
+                  - id: 1
+                    name: "招牌奶茶"
+                    price: 12.00
+                    description: "经典招牌，香浓醇厚"
+                    options:
+                      sugar: ["全糖", "七分糖", "半糖", "三分糖", "无糖"]
+                      ice: ["正常冰", "少冰", "去冰", "热"]
+    
+    - name: "create_order"
+      path: "/api/orders"
+      method: "POST"
+      description: "创建订单，需要用户授权手机号和地址"
+      requires_payment: true
+      input_schema:
+        type: object
+        required:
+          - items
+          - address
+          - phone
+        properties:
+          items:
+            type: array
+            description: "购买的商品列表"
+            items:
+              type: object
+              required:
+                - product_id
+                - quantity
+              properties:
+                product_id:
+                  type: integer
+                  description: "商品ID"
+                quantity:
+                  type: integer
+                  description: "数量"
+                options:
+                  type: object
+                  description: "口味选项"
+                  properties:
+                    sugar:
+                      type: string
+                    ice:
+                      type: string
+          address:
+            type: string
+            description: "配送地址"
+          phone:
+            type: string
+            description: "联系电话"
+          note:
+            type: string
+            description: "订单备注（可选）"
+      output_schema:
+        type: object
+        properties:
+          order_no:
+            type: string
+          total_amount:
+            type: number
+          payment_url:
+            type: string
+          estimated_time:
+            type: string
+      output_description: |
+        订单创建成功后返回：
+        - order_no: 订单号
+        - total_amount: 待支付金额
+        - payment_url: 支付链接
+        - estimated_time: 预计送达时间
+    
+    - name: "get_order_status"
+      path: "/api/orders/{order_no}"
+      method: "GET"
+      description: "查询订单状态"
+      requires_payment: false
+      input_schema:
+        type: object
+        required:
+          - order_no
+        properties:
+          order_no:
+            type: string
+            description: "订单号"
+      output_schema:
+        type: object
+        properties:
+          order_no:
+            type: string
+          status:
+            type: string
+            enum: ["pending_payment", "paid", "preparing", "delivering", "completed", "cancelled"]
+          status_text:
+            type: string
+          items:
+            type: array
+          total_amount:
+            type: number
+          estimated_time:
+            type: string
+      output_description: |
+        返回订单当前状态：
+        - pending_payment: 待支付
+        - paid: 已支付
+        - preparing: 制作中
+        - delivering: 配送中
+        - completed: 已完成
+        - cancelled: 已取消
+  
+  error_handling:
+    codes:
+      - code: "SHOP_CLOSED"
+        description: "店铺已打烊"
+        suggestion: "告知用户当前不在营业时间（9:00-21:00），询问是否需要预约"
+      - code: "OUT_OF_STOCK"
+        description: "商品已售罄"
+        suggestion: "告知用户该商品已售完，推荐其他相似商品"
+      - code: "OUT_OF_RANGE"
+        description: "超出配送范围"
+        suggestion: "告知用户地址超出3公里配送范围，建议更换地址"
+      - code: "MIN_AMOUNT_NOT_MET"
+        description: "未达到起送金额"
+        suggestion: "告知用户当前金额不足10元起送标准，建议添加更多商品"
+      - code: "INVALID_OPTIONS"
+        description: "无效的口味选项"
+        suggestion: "重新让用户选择有效的口味配置"
